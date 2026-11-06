@@ -27,6 +27,7 @@ from fastmcp.tools.tool import Tool, ToolResult
 from mcp.client.session import ClientSession
 from mcp.types import TextContent
 import webbrowser
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from colab_mcp.websocket_server import ColabWebSocketServer, COLAB, SCRATCH_PATH
 
@@ -36,6 +37,20 @@ FE_CONNECTED_KEY = "fe_connected"
 PROXY_TOKEN_KEY = "proxy_token"
 PROXY_PORT_KEY = "proxy_port"
 INJECTED_TOOL_NAME = "open_colab_browser_connection"
+
+
+def _connection_url(notebook_url: str | None, token: str, port: int) -> str:
+    """Return an allowlisted Colab URL carrying the local proxy connection."""
+    target = notebook_url or f"{COLAB}{SCRATCH_PATH}"
+    parsed = urlsplit(target)
+    if parsed.scheme != "https" or parsed.netloc not in {
+        "colab.research.google.com",
+        "colab.google.com",
+    }:
+        raise ValueError("notebook_url must use an official HTTPS Colab origin")
+    fragment = dict(parse_qsl(parsed.fragment, keep_blank_values=True))
+    fragment.update({"mcpProxyToken": token, "mcpProxyPort": str(port)})
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, parsed.query, urlencode(fragment)))
 
 
 class ColabTransport(ClientTransport):
@@ -159,22 +174,22 @@ class ColabProxyMiddleware(Middleware):
             )
 
 
-async def check_session_proxy_tool_fn(ctx: Context = CurrentContext()) -> bool:
+async def check_session_proxy_tool_fn(
+    ctx: Context = CurrentContext(), notebook_url: str | None = None
+) -> bool:
     fe_connected = ctx.get_state(FE_CONNECTED_KEY)
     token = ctx.get_state(PROXY_TOKEN_KEY)
     port = ctx.get_state(PROXY_PORT_KEY)
     if fe_connected:
         return True
-    webbrowser.open_new(
-        f"{COLAB}{SCRATCH_PATH}#mcpProxyToken={token}&mcpProxyPort={port}"
-    )
+    webbrowser.open_new(_connection_url(notebook_url, token, port))
     return False
 
 
 check_session_proxy_tool = Tool.from_function(
     fn=check_session_proxy_tool_fn,
     name=INJECTED_TOOL_NAME,
-    description="Opens a connection to a Google Colab browser session and unlocks notebook editing tools. Returns a boolean representing whether the connection attempt succeeded",
+    description="Opens a connection to a Google Colab browser session and unlocks notebook editing tools. Optionally targets an existing official Colab notebook URL. Returns a boolean representing whether the connection attempt succeeded",
 )
 
 

@@ -173,6 +173,27 @@ class TestCheckSessionProxyToolFn:
         assert "mcpProxyToken=test-token" in args[0]
         assert "mcpProxyPort=1234" in args[0]
 
+    @pytest.mark.asyncio
+    async def test_disconnected_existing_notebook_url(self, mock_webbrowser):
+        ctx = Mock()
+        ctx.get_state.side_effect = lambda k: {
+            session.FE_CONNECTED_KEY: False,
+            session.PROXY_TOKEN_KEY: "test-token",
+            session.PROXY_PORT_KEY: 1234,
+        }.get(k)
+
+        assert await session.check_session_proxy_tool_fn(
+            ctx,
+            "https://colab.research.google.com/drive/example?usp=sharing",
+        ) is False
+        url = mock_webbrowser.call_args.args[0]
+        assert url.startswith("https://colab.research.google.com/drive/example?usp=sharing#")
+        assert "mcpProxyToken=test-token" in url
+
+    def test_rejects_non_colab_notebook_url(self):
+        with pytest.raises(ValueError, match="official HTTPS Colab"):
+            session._connection_url("https://example.com/notebook", "token", 1234)
+
 
 class TestColabProxyClient:
     def test_is_connected(self, mock_wss):

@@ -23,6 +23,7 @@ from fastmcp import FastMCP
 from fastmcp.utilities import logging as fastmcp_logger
 
 from colab_mcp.session import ColabSessionProxy
+from colab_mcp.headless import register_headless_tools
 
 
 mcp = FastMCP(name="ColabMCP")
@@ -66,6 +67,7 @@ def parse_args(v):
 async def main_async():
     args = parse_args(sys.argv[1:])
     init_logger(args.log)
+    register_headless_tools(mcp)
 
     if args.enable_proxy:
         logging.info("enabling session proxy tools")
